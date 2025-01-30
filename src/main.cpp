@@ -5,6 +5,7 @@
 #include <chrono>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "particle_simulation/particle.hpp"
 #include "particle_simulation/particle_manager.hpp"
@@ -24,6 +25,8 @@ double prev_mouse_inter_time_ = 0.0;
 double d_last_gen_time_ = 0.0;
 
 ParticleManager particle_manager_;
+
+GLuint circle_vbo_;
 
 // window 좌표계는 좌상단이 0,0
 // OpenGL 좌표계는 좌하단이 0,0
@@ -58,13 +61,16 @@ std::pair<double, double> PhysicsToWindowCoords(const double& d_physics_x, const
 
 void AddParticleMouse() {
     double current_time = ros::Time::now().toSec();
+    std::cout<<"CURRENT TIME: "<<current_time<<std::endl;
+    std::cout<<"DT: "<<current_time - d_last_gen_time_<<std::endl;
     if (current_time - d_last_gen_time_ > MIN_GEN_DT) {
         std::pair<double, double> d_physics_coords = WindowToPhysicsCoords(d_mouse_x_, d_mouse_y_);
         // particle_manager_.AddParticle(d_physics_coords.first, d_physics_coords.second, 0.0, 0.0, 0.0, -GRAVITY, particle_manager_.GetParticleCount());
 
         for(int i = 0; i < 10; i++) {
             for(int j = 0; j < 10; j++){
-                particle_manager_.AddParticle(d_physics_coords.first - 10.0 + i * 2.0, d_physics_coords.second - 10.0 + j * 2.0,
+                particle_manager_.AddParticle(d_physics_coords.first - PARTICLE_RADIUS * 5 + i * PARTICLE_RADIUS,
+                                              d_physics_coords.second - PARTICLE_RADIUS * 5 + j * PARTICLE_RADIUS,
                                                 0.0, 0.0, 0.0, -GRAVITY, particle_manager_.GetParticleCount());
             }
             // particle_manager_.AddParticle(d_physics_coords.first - 10.0 + i * 2.0, d_physics_coords.second, 0.0, 0.0, 0.0, -GRAVITY, particle_manager_.GetParticleCount());
@@ -132,19 +138,50 @@ void CursorPositionCallback(GLFWwindow* p_window, double xpos, double ypos) {
     }
 }
 
-// 원 그리기 함수
+// Function to initialize the circle VBO
+void InitializeCircle() {
+    std::vector<float> vertices;
+    for (int i = 0; i <= CIRCLE_SEGMENTS ; i++) {
+        double angle = 2.0 * M_PI * i / CIRCLE_SEGMENTS ;
+        vertices.push_back(cos(angle)); // x
+        vertices.push_back(sin(angle)); // y
+    }
+
+    glGenBuffers(1, &circle_vbo_);
+    glBindBuffer(GL_ARRAY_BUFFER, circle_vbo_);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+// Original function to draw a circle
 void DrawCircle(double x, double y, double radius, float r = 1.0, float g = 1.0, float b = 1.0) {
-    int i_segments = 6;
     glColor3f(r, g, b);
     glBegin(GL_TRIANGLE_FAN);
     glVertex2f(x, y);
-    for (int i = 0; i <= i_segments; i++) {
-        double angle = 2.0 * M_PI * i / i_segments;
+    for (int i = 0; i <= CIRCLE_SEGMENTS ; i++) {
+        double angle = 2.0 * M_PI * i / CIRCLE_SEGMENTS ;
         double dx = radius * cos(angle);
         double dy = radius * sin(angle);
         glVertex2f(x + dx, y + dy);
     }
     glEnd(); 
+}
+
+// Optimized function to draw a circle using VBO
+void DrawCircleOptimized(double x, double y, double radius, float r = 1.0, float g = 1.0, float b = 1.0) {
+    glColor3f(r, g, b);
+    glBindBuffer(GL_ARRAY_BUFFER, circle_vbo_);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(2, GL_FLOAT, 0, 0);
+    
+    glPushMatrix();
+    glTranslatef(x, y, 0.0f);
+    glScalef(radius, radius, 1.0f);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, CIRCLE_SEGMENTS  + 1);
+    glPopMatrix();
+
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 // 점 그리기 함수
@@ -227,6 +264,8 @@ int main(int argc, char** argv) {
     glfwSetMouseButtonCallback(p_window, MouseButtonCallback);
     glfwSetCursorPosCallback(p_window, CursorPositionCallback);
 
+    InitializeCircle(); // Call to initialize the circle VBO
+
     // Main loop
     while (ros::ok() && !glfwWindowShouldClose(p_window)) {
 
@@ -245,7 +284,9 @@ int main(int argc, char** argv) {
         auto update_start_time = std::chrono::high_resolution_clock::now();
         
         // Update particles
-        particle_manager_.UpdateParticles(FRAME_DT); // Assuming 60 FPS
+        // particle_manager_.UpdateParticles(FRAME_DT); // Assuming 60 FPS
+
+        particle_manager_.UpdateParticleIteration(FRAME_DT, OPT_ITER);
         
         auto update_end_time = std::chrono::high_resolution_clock::now();
         auto update_duration = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(update_end_time - update_start_time).count();
@@ -280,7 +321,8 @@ int main(int argc, char** argv) {
             if (PARTICLE_RADIUS <= 2) {
                 DrawPoint(d_opengl_x, d_opengl_y, f_r, f_g, f_b);
             } else {
-                DrawCircle(d_opengl_x, d_opengl_y, PARTICLE_RADIUS/WINDOW_WIDTH * 2.0, f_r, f_g, f_b); // Draw each particle with color based on velocity
+                // DrawCircle(d_opengl_x, d_opengl_y, PARTICLE_RADIUS/WINDOW_WIDTH * 2.0, f_r, f_g, f_b);
+                DrawCircleOptimized(d_opengl_x, d_opengl_y, PARTICLE_RADIUS/WINDOW_WIDTH * 2.0, f_r, f_g, f_b); // Draw each particle with color based on velocity
             }
         }
 
@@ -315,6 +357,7 @@ int main(int argc, char** argv) {
     }
 
     // Clean up
+    glDeleteBuffers(1, &circle_vbo_); // Clean up VBO
     glfwTerminate();
     return 0;
 }

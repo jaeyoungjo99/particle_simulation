@@ -106,14 +106,23 @@ void ParticleManager::AssignParticlesToGrid() {
     }
 }
 
+void ParticleManager::UpdateParticleIteration(float d_time_step, int iteration){
+    for (int i = 0; i < iteration; ++i) {
+        if(i == 0){
+            UpdateParticles(d_time_step);
+        }
+        else{
+            UpdateParticles(0.0);
+        }
+    }
+}
+
 // Update all particles
 void ParticleManager::UpdateParticles(float d_time_step) {
 
     AssignParticlesToGrid();
 
     float min_distance = PARTICLE_RADIUS * 2.0;
-
-
 
     for (auto& p1 : particles_) {
         p1.Update(d_time_step);

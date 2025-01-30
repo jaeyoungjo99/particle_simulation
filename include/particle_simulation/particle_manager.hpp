@@ -14,6 +14,7 @@ public:
     void SetBounds(float d_min_x, float d_max_x, float d_min_y, float d_max_y);
     void AddParticle(float d_x, float d_y, float d_vx, float d_vy, float d_ax, float d_ay, int id);
     void InteractParticle(float x, float y, float vx, float vy, float radius);
+    void UpdateParticleIteration(float d_time_step, int iteration = 1);
     void UpdateParticles(float d_time_step);
 
     // Get all particle positions
